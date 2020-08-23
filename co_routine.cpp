@@ -55,8 +55,8 @@ struct stCoRoutineEnv_t
 	stCoEpoll_t *pEpoll;
 
 	//for copy stack log lastco and nextco
-	stCoRoutine_t* pending_co;
-	stCoRoutine_t* occupy_co;
+	stCoRoutine_t* pending_co; // 下一个协程
+	stCoRoutine_t* occupy_co; // 当前协程
 };
 //int socket(int domain, int type, int protocol);
 void co_log_err( const char *fmt,... )
@@ -187,7 +187,7 @@ void RemoveFromLink(T *ap)
 	ap->pPrev = ap->pNext = NULL;
 	ap->pLink = NULL;
 }
-
+// 时间轮，把定时事件加到链表尾
 template <class TNode,class TLink>
 void inline AddTail(TLink*apLink,TNode *ap)
 {
@@ -314,7 +314,7 @@ struct stCoEpoll_t
 	int iEpollFd;
 	static const int _EPOLL_SIZE = 1024 * 10;
 
-	struct stTimeout_t *pTimeout;
+	struct stTimeout_t *pTimeout; // 管理超时事件用的时间轮，ms级别
 
 	struct stTimeoutItemLink_t *pstTimeoutList;
 
@@ -338,10 +338,10 @@ struct stTimeoutItem_t
 
 	unsigned long long ullExpireTime;
 
-	OnPreparePfn_t pfnPrepare;
-	OnProcessPfn_t pfnProcess;
+	OnPreparePfn_t pfnPrepare; // 事件触发后预处理函数，看起来是用来epoll事件转回poll事件的
+	OnProcessPfn_t pfnProcess; // 回调处理函数
 
-	void *pArg; // routine 
+	void *pArg; // routine // 回调参数，用来存放协程对象
 	bool bTimeout;
 };
 struct stTimeoutItemLink_t
@@ -375,6 +375,7 @@ void FreeTimeout( stTimeout_t *apTimeout )
 	free( apTimeout->pItems );
 	free ( apTimeout );
 }
+// 增加一个定时事件
 int AddTimeout( stTimeout_t *apTimeout,stTimeoutItem_t *apItem ,unsigned long long allNow )
 {
 	if( apTimeout->ullStart == 0 )
@@ -410,6 +411,7 @@ int AddTimeout( stTimeout_t *apTimeout,stTimeoutItem_t *apItem ,unsigned long lo
 
 	return 0;
 }
+// 取出所有超时时间，并更新时间戳
 inline void TakeAllTimeout( stTimeout_t *apTimeout,unsigned long long allNow,stTimeoutItemLink_t *apResult )
 {
 	if( apTimeout->ullStart == 0 )
@@ -457,7 +459,7 @@ static int CoRoutineFunc( stCoRoutine_t *co,void * )
 }
 
 
-
+// 基于env创建协程接口
 struct stCoRoutine_t *co_create_env( stCoRoutineEnv_t * env, const stCoRoutineAttr_t* attr,
 		pfn_co_routine_t pfn,void *arg )
 {
@@ -476,7 +478,7 @@ struct stCoRoutine_t *co_create_env( stCoRoutineEnv_t * env, const stCoRoutineAt
 		at.stack_size = 1024 * 1024 * 8;
 	}
 
-	if( at.stack_size & 0xFFF ) 
+	if( at.stack_size & 0xFFF ) // 0xFFF 向上取整
 	{
 		at.stack_size &= ~0xFFF;
 		at.stack_size += 0x1000;
@@ -517,7 +519,7 @@ struct stCoRoutine_t *co_create_env( stCoRoutineEnv_t * env, const stCoRoutineAt
 
 	return lp;
 }
-
+// 协程创建接口
 int co_create( stCoRoutine_t **ppco,const stCoRoutineAttr_t *attr,pfn_co_routine_t pfn,void *arg )
 {
 	if( !co_get_curr_thread_env() ) 
@@ -615,6 +617,7 @@ void co_yield( stCoRoutine_t *co )
 	co_yield_env( co->env );
 }
 
+// 把当前运行的函数压栈的信息保存入save_buffer里
 void save_stack_buffer(stCoRoutine_t* occupy_co)
 {
 	///copy out
@@ -640,6 +643,7 @@ void co_swap(stCoRoutine_t* curr, stCoRoutine_t* pending_co)
 	char c;
 	curr->stack_sp= &c;
 
+    // 关闭cIsShareStack看起来就不会做栈内存拷贝
 	if (!pending_co->cIsShareStack)
 	{
 		env->pending_co = NULL;
@@ -660,6 +664,7 @@ void co_swap(stCoRoutine_t* curr, stCoRoutine_t* pending_co)
 		}
 	}
 
+    // 这里更新了寄存器的值，把旧值塞给了curr->ctx，pending_co的值更新到寄存器上
 	//swap context
 	coctx_swap(&(curr->ctx),&(pending_co->ctx) );
 
@@ -670,6 +675,7 @@ void co_swap(stCoRoutine_t* curr, stCoRoutine_t* pending_co)
 	
 	if (update_occupy_co && update_pending_co && update_occupy_co != update_pending_co)
 	{
+        // 恢复之前的栈信息，有点迷，为什么是用update_pending_co而不是update_occupy_co
 		//resume stack buffer
 		if (update_pending_co->save_buffer && update_pending_co->save_size > 0)
 		{
@@ -758,17 +764,20 @@ void co_init_curr_thread_env()
 	stCoEpoll_t *ev = AllocEpoll();
 	SetEpoll( env,ev );
 }
+// 当前线程的主协程
 stCoRoutineEnv_t *co_get_curr_thread_env()
 {
 	return gCoEnvPerThread;
 }
 
+// 回调处理函数
 void OnPollProcessEvent( stTimeoutItem_t * ap )
 {
 	stCoRoutine_t *co = (stCoRoutine_t*)ap->pArg;
 	co_resume( co );
 }
 
+// 事件触发后会触发，epoll转回poll接口，iAllEventDetach还没看懂
 void OnPollPreparePfn( stTimeoutItem_t * ap,struct epoll_event &e,stTimeoutItemLink_t *active )
 {
 	stPollItem_t *lp = (stPollItem_t *)ap;
@@ -789,7 +798,7 @@ void OnPollPreparePfn( stTimeoutItem_t * ap,struct epoll_event &e,stTimeoutItemL
 	}
 }
 
-
+// 主协程处理逻辑，统一管理各种可读可写超时事件，基于epoll实现
 void co_eventloop( stCoEpoll_t *ctx,pfn_co_eventloop_t pfn,void *arg )
 {
 	if( !ctx->result )
@@ -873,13 +882,13 @@ void OnCoroutineEvent( stTimeoutItem_t * ap )
 	co_resume( co );
 }
 
-
+// 产生一个epoll
 stCoEpoll_t *AllocEpoll()
 {
 	stCoEpoll_t *ctx = (stCoEpoll_t*)calloc( 1,sizeof(stCoEpoll_t) );
 
 	ctx->iEpollFd = co_epoll_create( stCoEpoll_t::_EPOLL_SIZE );
-	ctx->pTimeout = AllocTimeout( 60 * 1000 );
+	ctx->pTimeout = AllocTimeout( 60 * 1000 ); 
 	
 	ctx->pstActiveList = (stTimeoutItemLink_t*)calloc( 1,sizeof(stTimeoutItemLink_t) );
 	ctx->pstTimeoutList = (stTimeoutItemLink_t*)calloc( 1,sizeof(stTimeoutItemLink_t) );
@@ -912,7 +921,7 @@ stCoRoutine_t *GetCurrThreadCo( )
 }
 
 
-
+// 这里poll的接口，本质还是转为epoll事件去注册内核。
 typedef int (*poll_pfn_t)(struct pollfd fds[], nfds_t nfds, int timeout);
 int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeout, poll_pfn_t pollfunc)
 {
@@ -974,14 +983,14 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 				}
 				free(arg.fds);
 				free(&arg);
-				return pollfunc(fds, nfds, timeout);
+				return pollfunc(fds, nfds, timeout); // epoll注册失败则用回poll
 			}
 		}
 		//if fail,the timeout would work
 	}
 
 	//3.add timeout
-
+    // 注册超时事件，前面虽然注册了可读/写事件，但是是异步实现，不可能在这里调用epoll_wait，所以转为注册超时事件去实现
 	unsigned long long now = GetTickMS();
 	arg.ullExpireTime = now + timeout;
 	int ret = AddTimeout( ctx->pTimeout,&arg,now );

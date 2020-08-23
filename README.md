@@ -1,48 +1,37 @@
-Libco
+Libco阅读笔记
 ===========
-Libco is a c/c++ coroutine library that is widely used in WeChat services. It has been running on tens of thousands of machines since 2013.
+个人阅读笔记，可能有理解错误的地方，望指出
+进度 20%
 
-By linking with libco, you can easily transform synchronous back-end service into coroutine service. The coroutine service will provide out-standing concurrency compare to multi-thread approach. With the system hook, You can easily coding in synchronous way but asynchronous executed.
-
-You can also use co_create/co_resume/co_yield interfaces to create asynchronous back-end service. These interface will give you more control of coroutines.
-
-By libco copy-stack mode, you can easily build a back-end service support tens of millions of tcp connection.
-***
-### 简介
-libco是微信后台大规模使用的c/c++协程库，2013年至今稳定运行在微信后台的数万台机器上。  
-
-libco通过仅有的几个函数接口 co_create/co_resume/co_yield 再配合 co_poll，可以支持同步或者异步的写法，如线程库一样轻松。同时库里面提供了socket族函数的hook，使得后台逻辑服务几乎不用修改逻辑代码就可以完成异步化改造。
-
-作者: sunnyxu(sunnyxu@tencent.com), leiffyli(leiffyli@tencent.com), dengoswei@gmail.com(dengoswei@tencent.com), sarlmolchen(sarlmolchen@tencent.com)
-
-PS: **近期将开源PaxosStore，敬请期待。**
-
-### libco的特性
-- 无需侵入业务逻辑，把多进程、多线程服务改造成协程服务，并发能力得到百倍提升;
-- 支持CGI框架，轻松构建web服务(New);
-- 支持gethostbyname、mysqlclient、ssl等常用第三库(New);
-- 可选的共享栈模式，单机轻松接入千万连接(New);
-- 完善简洁的协程编程接口
- * 类pthread接口设计，通过co_create、co_resume等简单清晰接口即可完成协程的创建与恢复；
- * __thread的协程私有变量、协程间通信的协程信号量co_signal (New);
- * 语言级别的lambda实现，结合协程原地编写并执行后台异步任务 (New);
- * 基于epoll/kqueue实现的小而轻的网络框架，基于时间轮盘实现的高性能定时器;
-
-### Build
-
-```bash
-$ cd /path/to/libco
-$ make
-```
-
-or use cmake
-
-```bash
-$ cd /path/to/libco
-$ mkdir build
-$ cd build
-$ cmake ..
-$ make
-```
+### 前置知识点
+基本了解epoll、poll区别以及接口使用
+hook系统调用
 
 
+### 基本用法
+| 函数名              | 作用|
+| :----------------- | :----|
+| co_create          | 创建一个协程，用法和pthread_create差不多 |
+| co_resume          | 恢复指定协程 |
+| co_eventloop       | 进入协程的epoll循环 |
+| co_yield           | 从当前协程切出去 |
+| co_poll            | 用法类似poll接口，本质是epoll实现 |
+| co_enable_hook_sys | hook系统函数的开关，开启后使用read、write等系统调用会使用libco的实现 |
+
+
+### 代码简要
+| 文件名               | 作用|
+| :-------------------- | :----|
+| co_closure.h          | 定义了一些宏 |
+| co_epoll.h/cpp        | 简单封装了一层epoll |
+| co_hook_sys_call.cpp  | hook各种系统调用的实现 |
+| co_routine_inner.h    |  |
+| co_routine_specific.h |  |
+| co_routine.h/cpp      | 协程的主要实现 |
+
+
+### 疑问
+Q1：协程和epoll的关系
+A1：感觉关系不大，协程的实现本身和epoll无关，协程核心在维护函数栈和切换上下文。但是libco库hook系统read和write函数依赖epoll来判断什么时候可读可写，或者超时
+Q2：为什么libco既要用epoll又要用poll
+A2：最终都是用epoll，hook了poll函数里面，在co_poll_inner的实现里将poll转为epoll。用poll感觉是为了统一对外接口

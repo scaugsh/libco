@@ -37,7 +37,7 @@ struct stCoRoutineAttr_t
 		stack_size = 128 * 1024;
 		share_stack = NULL;
 	}
-}__attribute__ ((packed));
+}__attribute__ ((packed)); // 防止字节对齐
 
 struct stCoEpoll_t;
 typedef int (*pfn_co_eventloop_t)(void *);
@@ -46,9 +46,9 @@ typedef void *(*pfn_co_routine_t)( void * );
 //2.co_routine
 
 int 	co_create( stCoRoutine_t **co,const stCoRoutineAttr_t *attr,void *(*routine)(void*),void *arg );
-void    co_resume( stCoRoutine_t *co );
+void    co_resume( stCoRoutine_t *co ); //执行或继续执行协程
 void    co_yield( stCoRoutine_t *co );
-void    co_yield_ct(); //ct = current thread
+void    co_yield_ct(); //ct = current thread // 切回主协程
 void    co_release( stCoRoutine_t *co );
 void    co_reset(stCoRoutine_t * co); 
 

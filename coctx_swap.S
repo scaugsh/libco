@@ -15,7 +15,9 @@
 * See the License for the specific language governing permissions and 
 * limitations under the License.
 */
-
+/*
+ * 只看了32位系统的实现，大概就是把寄存器塞进去第一个参数coctx_t指向的内存里，然后把第二个参数coctx_t指向内存的值填入寄存器
+ */
 .globl coctx_swap
 #if !defined( __APPLE__ )
 .type  coctx_swap, @function
@@ -23,7 +25,7 @@
 coctx_swap:
 
 #if defined(__i386__)
-    movl 4(%esp), %eax
+    movl 4(%esp), %eax  ; 取栈顶偏移4位元素，函数是从右到左入栈，所以这里应该是取第一个coctx_t的指针
     movl %esp,  28(%eax)
     movl %ebp, 24(%eax)
     movl %esi, 20(%eax)

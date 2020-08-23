@@ -574,6 +574,7 @@ ssize_t recv( int socket, void *buffer, size_t length, int flags )
 
 extern int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeout, poll_pfn_t pollfunc);
 
+// 不适用于太多句柄的事件监听
 int poll(struct pollfd fds[], nfds_t nfds, int timeout)
 {
 	HOOK_SYS_FUNC( poll );
@@ -585,7 +586,7 @@ int poll(struct pollfd fds[], nfds_t nfds, int timeout)
 	nfds_t nfds_merge = 0;
 	std::map<int, int> m;  // fd --> idx
 	std::map<int, int>::iterator it;
-	if (nfds > 1) {
+	if (nfds > 1) { // 合并同个fd注册多个事件到一个事件里
 		fds_merge = (pollfd *)malloc(sizeof(pollfd) * nfds);
 		for (size_t i = 0; i < nfds; i++) {
 			if ((it = m.find(fds[i].fd)) == m.end()) {
@@ -605,7 +606,7 @@ int poll(struct pollfd fds[], nfds_t nfds, int timeout)
 	} else {
 		ret = co_poll_inner(co_get_epoll_ct(), fds_merge, nfds_merge, timeout,
 				g_sys_poll_func);
-		if (ret > 0) {
+		if (ret > 0) { // 合并完fd的事件还得恢复回去，似乎是触发了某些第三方库的bug。不过这里真的有必要合并事件吗，开销也不小
 			for (size_t i = 0; i < nfds; i++) {
 				it = m.find(fds[i].fd);
 				if (it != m.end()) {

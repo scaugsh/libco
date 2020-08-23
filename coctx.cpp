@@ -90,20 +90,21 @@ int coctx_init(coctx_t* ctx) {
   memset(ctx, 0, sizeof(*ctx));
   return 0;
 }
+// 初始化函数运行栈内存，内存偏移部分有点迷，感觉是stack:|------|ret_addr|void *|coctx_param_t|
 int coctx_make(coctx_t* ctx, coctx_pfn_t pfn, const void* s, const void* s1) {
   // make room for coctx_param
-  char* sp = ctx->ss_sp + ctx->ss_size - sizeof(coctx_param_t);
-  sp = (char*)((unsigned long)sp & -16L);
+  char* sp = ctx->ss_sp + ctx->ss_size - sizeof(coctx_param_t); // sp指向stack_buffer的尾部减去coctx_param_t的大小
+  sp = (char*)((unsigned long)sp & -16L); // 相当于 & 0xFFFFFFFFFFFFFFF0
 
   coctx_param_t* param = (coctx_param_t*)sp;
-  void** ret_addr = (void**)(sp - sizeof(void*) * 2);
+  void** ret_addr = (void**)(sp - sizeof(void*) * 2); // *2 意义不明
   *ret_addr = (void*)pfn;
   param->s1 = s;
   param->s2 = s1;
 
   memset(ctx->regs, 0, sizeof(ctx->regs));
 
-  ctx->regs[kESP] = (char*)(sp) - sizeof(void*) * 2;
+  ctx->regs[kESP] = (char*)(sp) - sizeof(void*) * 2; // wtf??? ctx->ss_sp应该是指向堆内存，为什么可以直接写入寄存器
   return 0;
 }
 #elif defined(__x86_64__)
