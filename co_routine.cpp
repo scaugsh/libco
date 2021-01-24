@@ -993,7 +993,7 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 	}
 
 	//3.add timeout
-    // 注册超时事件，前面虽然注册了可读/写事件，但是是异步实现，不可能在这里调用epoll_wait，所以转为注册超时事件去实现
+    // 注册超时事件，前面虽然注册了可读/写事件，但是是异步实现，不可能在这里调用epoll_wait，所以转为注册超时事件去兜底
 	unsigned long long now = GetTickMS();
 	arg.ullExpireTime = now + timeout;
 	int ret = AddTimeout( ctx->pTimeout,&arg,now );
@@ -1008,12 +1008,12 @@ int co_poll_inner( stCoEpoll_t *ctx,struct pollfd fds[], nfds_t nfds, int timeou
 	}
     else
 	{
-		co_yield_env( co_get_curr_thread_env() );
+		co_yield_env( co_get_curr_thread_env() ); // 等待可读、可写、超时事件
 		iRaiseCnt = arg.iRaiseCnt;
 	}
 
     {
-		//clear epoll status and memory
+		//clear epoll status and memory // 事件触发了，清除事件注册，并返回上层
 		RemoveFromLink<stTimeoutItem_t,stTimeoutItemLink_t>( &arg );
 		for(nfds_t i = 0;i < nfds;i++)
 		{

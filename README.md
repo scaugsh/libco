@@ -27,10 +27,11 @@ hook系统调用
 | co_closure.h          | 定义了一些宏 |
 | co_epoll.h/cpp        | 简单封装了一层epoll |
 | co_hook_sys_call.cpp  | hook各种系统调用的实现 |
-| co_routine_inner.h    |  |
+| co_routine_inner.h    | 协程一些定义 |
 | co_routine_specific.h |  |
 | co_routine.h/cpp      | 协程的主要实现 |
 | coctx_swap.S          | 协程的灵魂，汇编交换寄存器 |
+| coctx.cpp             | 设置协程的栈指针等 |
 
 ### 流程描述
 最核心的步骤就是切换两个执行中的函数的调度。
@@ -38,7 +39,7 @@ hook系统调用
 如果是使用了shareStack，知道了栈顶和栈底后，由于内存是连续的，可以直接把整个函数栈内存保存起来，注意这里其实开销可能比较大，所以尽量避免使用栈生成大内存。
 关闭shareStack的情况下，每个协程栈都是自己独立的内存，也不需要做拷贝。
 libco用了一个巧妙的方法，在堆上分配一块连续的内存，直接塞给寄存器，也就是说协程的函数是运行在堆上的。
-
+阻塞read和write，在libco的实现是注册可读、可写事件，然后切出当前协程，触发后epoll通知后，调用syscall的read和write。epoll使用LT或者ET应该关系不大，因为触发一次后就得把事件移除出去
 
 
 ### 疑问

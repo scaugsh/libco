@@ -279,7 +279,7 @@ int connect(int fd, const struct sockaddr *address, socklen_t address_len)
 	int pollret = 0;
 	struct pollfd pf = { 0 };
 
-	for(int i=0;i<3;i++) //25s * 3 = 75s
+	for(int i=0;i<3;i++) //25s * 3 = 75s // 重试3次
 	{
 		memset( &pf,0,sizeof(pf) );
 		pf.fd = fd;
@@ -293,7 +293,7 @@ int connect(int fd, const struct sockaddr *address, socklen_t address_len)
 		}
 	}
 
-	if( pf.revents & POLLOUT ) //connect succ
+	if( pf.revents & POLLOUT ) //connect succ // 连接一般只能注册写事件，触发写事件后判断错误码验证连接是否正常
 	{
     // 3.check getsockopt ret
     int err = 0;
