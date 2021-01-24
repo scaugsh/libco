@@ -90,7 +90,7 @@ int coctx_init(coctx_t* ctx) {
   memset(ctx, 0, sizeof(*ctx));
   return 0;
 }
-// 初始化函数运行栈内存，内存偏移部分有点迷，感觉是stack:|------|ret_addr|void *|coctx_param_t|
+// 初始化函数运行的内存，注意这里用的堆的内存，内存偏移部分有点迷，感觉是stack:|------|ret_addr|void *|coctx_param_t|
 int coctx_make(coctx_t* ctx, coctx_pfn_t pfn, const void* s, const void* s1) {
   // make room for coctx_param
   char* sp = ctx->ss_sp + ctx->ss_size - sizeof(coctx_param_t); // sp指向stack_buffer的尾部减去coctx_param_t的大小
@@ -104,7 +104,7 @@ int coctx_make(coctx_t* ctx, coctx_pfn_t pfn, const void* s, const void* s1) {
 
   memset(ctx->regs, 0, sizeof(ctx->regs));
 
-  ctx->regs[kESP] = (char*)(sp) - sizeof(void*) * 2; // wtf??? ctx->ss_sp应该是指向堆内存，为什么可以直接写入寄存器
+  ctx->regs[kESP] = (char*)(sp) - sizeof(void*) * 2; // ctx->ss_sp应该是指向一块连续的堆内存，所以函数运行也是在堆上。相当巧妙
   return 0;
 }
 #elif defined(__x86_64__)

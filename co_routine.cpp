@@ -42,16 +42,16 @@
 
 extern "C"
 {
-	extern void coctx_swap( coctx_t *,coctx_t* ) asm("coctx_swap");
+	extern void coctx_swap( coctx_t *,coctx_t* ) asm("coctx_swap"); // 最核心的步骤，交换寄存器
 };
 using namespace std;
 stCoRoutine_t *GetCurrCo( stCoRoutineEnv_t *env );
 struct stCoEpoll_t;
-
+// stCoRoutineEnv_t 是一个线程拥有的协程列表信息，不同线程拥有不同的stCoRoutineEnv_t，做协程切换也不会由什么影响
 struct stCoRoutineEnv_t
 {
-	stCoRoutine_t *pCallStack[ 128 ];
-	int iCallStackSize;
+	stCoRoutine_t *pCallStack[ 128 ]; // 协程队列大小
+	int iCallStackSize; // pCallStack 大小
 	stCoEpoll_t *pEpoll;
 
 	//for copy stack log lastco and nextco
@@ -266,6 +266,7 @@ void inline Join( TLink*apLink,TLink *apOther )
 }
 
 /////////////////for copy stack //////////////////////////
+// 生成一个buffer存分栈信息
 stStackMem_t* co_alloc_stackmem(unsigned int stack_size)
 {
 	stStackMem_t* stack_mem = (stStackMem_t*)malloc(sizeof(stStackMem_t));
@@ -276,6 +277,7 @@ stStackMem_t* co_alloc_stackmem(unsigned int stack_size)
 	return stack_mem;
 }
 
+// 分配一个共享栈
 stShareStack_t* co_alloc_sharestack(int count, int stack_size)
 {
 	stShareStack_t* share_stack = (stShareStack_t*)malloc(sizeof(stShareStack_t));
@@ -493,6 +495,7 @@ struct stCoRoutine_t *co_create_env( stCoRoutineEnv_t * env, const stCoRoutineAt
 	lp->pfn = pfn;
 	lp->arg = arg;
 
+	// 如果有用内存池，则使用内存池，否则重新分配一块内存
 	stStackMem_t* stack_mem = NULL;
 	if( at.share_stack )
 	{
@@ -505,7 +508,7 @@ struct stCoRoutine_t *co_create_env( stCoRoutineEnv_t * env, const stCoRoutineAt
 	}
 	lp->stack_mem = stack_mem;
 
-	lp->ctx.ss_sp = stack_mem->stack_buffer;
+	lp->ctx.ss_sp = stack_mem->stack_buffer; // 这里很巧妙，直接在堆上申请了一块连续内存，给函数当栈内存使用。具体查看coctx_make
 	lp->ctx.ss_size = at.stack_size;
 
 	lp->cStart = 0;
@@ -622,34 +625,34 @@ void save_stack_buffer(stCoRoutine_t* occupy_co)
 {
 	///copy out
 	stStackMem_t* stack_mem = occupy_co->stack_mem;
-	int len = stack_mem->stack_bp - occupy_co->stack_sp;
+	int len = stack_mem->stack_bp - occupy_co->stack_sp; // 由于栈是由高地址向低地址增长，栈底bp地址比栈顶sp大
 
 	if (occupy_co->save_buffer)
 	{
-		free(occupy_co->save_buffer), occupy_co->save_buffer = NULL;
+		free(occupy_co->save_buffer), occupy_co->save_buffer = NULL; // 直接给free有点浪费，使用realloc不是更优吗
 	}
 
-	occupy_co->save_buffer = (char*)malloc(len); //malloc buf;
+	occupy_co->save_buffer = (char*)malloc(len); //malloc buf; // 这里想吐槽一下，用内存池+固定大小不是更优吗
 	occupy_co->save_size = len;
 
 	memcpy(occupy_co->save_buffer, occupy_co->stack_sp, len);
 }
-
+// 暂停curr，恢复为pending_co
 void co_swap(stCoRoutine_t* curr, stCoRoutine_t* pending_co)
 {
  	stCoRoutineEnv_t* env = co_get_curr_thread_env();
 
 	//get curr stack sp
 	char c;
-	curr->stack_sp= &c;
+	curr->stack_sp= &c; // 栈顶地址，也就是栈内存会拷贝到这里截止
 
     // 关闭cIsShareStack看起来就不会做栈内存拷贝
-	if (!pending_co->cIsShareStack)
+	if (!pending_co->cIsShareStack) // 如果不用共享栈，则不需要拷贝，每个协程都有自己独立的栈buffer
 	{
 		env->pending_co = NULL;
 		env->occupy_co = NULL;
 	}
-	else 
+	else // 做了共享栈，因为有可能两个协程同时用到这个栈，所以要先把栈信息保存到save_buffer。这里没搞懂为什么不直接用可动态扩展的内存池来给每个协程分配独立的栈
 	{
 		env->pending_co = pending_co;
 		//get last occupy co on the same stack mem
@@ -666,16 +669,16 @@ void co_swap(stCoRoutine_t* curr, stCoRoutine_t* pending_co)
 
     // 这里更新了寄存器的值，把旧值塞给了curr->ctx，pending_co的值更新到寄存器上
 	//swap context
-	coctx_swap(&(curr->ctx),&(pending_co->ctx) );
+	coctx_swap(&(curr->ctx),&(pending_co->ctx) ); // 这里有点难理解，调用前后已经不是同一个运行的函数了，前面运行着的函数被保存起来了，后面是恢复以前运行的函数
 
-	//stack buffer may be overwrite, so get again;
+	//stack buffer may be overwrite, so get again; // 这里说的overwrite是指，切换了寄存器的值之后，当前env和coctx_swap前的env指向的地址已经不一样了
 	stCoRoutineEnv_t* curr_env = co_get_curr_thread_env();
 	stCoRoutine_t* update_occupy_co =  curr_env->occupy_co;
 	stCoRoutine_t* update_pending_co = curr_env->pending_co;
 	
 	if (update_occupy_co && update_pending_co && update_occupy_co != update_pending_co)
 	{
-        // 恢复之前的栈信息，有点迷，为什么是用update_pending_co而不是update_occupy_co
+        // 恢复之前的栈信息，这里用update_pending_co而不是update_occupy_co，是因为我们是要恢复之前运行的函数，之前运行的函数在update_pending_co上
 		//resume stack buffer
 		if (update_pending_co->save_buffer && update_pending_co->save_size > 0)
 		{

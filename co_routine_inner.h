@@ -37,12 +37,13 @@ struct stStackMem_t
 
 };
 
+// 内存池，用来保存栈信息的内存池，减少内存分配销毁开销
 struct stShareStack_t
 {
-	unsigned int alloc_idx;
-	int stack_size;
-	int count;
-	stStackMem_t** stack_array;
+	unsigned int alloc_idx; // 当前分配到的栈编号
+	int stack_size; // 栈大小
+	int count; // stack_array 数量
+	stStackMem_t** stack_array; // 是一个栈内存池
 };
 
 
@@ -50,7 +51,7 @@ struct stShareStack_t
 // 协程信息
 struct stCoRoutine_t
 {
-	stCoRoutineEnv_t *env;
+	stCoRoutineEnv_t *env; // 当前所处协程环境
 	pfn_co_routine_t pfn;
 	void *arg;
 	coctx_t ctx;
@@ -59,12 +60,12 @@ struct stCoRoutine_t
 	char cEnd;
 	char cIsMain;
 	char cEnableSysHook;
-	char cIsShareStack;
+	char cIsShareStack; // 是否使用内存池（需要存栈信息）
 
 	void *pvEnv;
 
 	//char sRunStack[ 1024 * 128 ];
-	stStackMem_t* stack_mem;
+	stStackMem_t* stack_mem; // 用来存栈信息，最小128K，最大8MB。
 
 
 	//save satck buffer while confilct on same stack_buffer;
