@@ -382,7 +382,7 @@ ssize_t write( int fd, const void *buf, size_t nbyte )
 	int timeout = ( lp->write_timeout.tv_sec * 1000 ) 
 				+ ( lp->write_timeout.tv_usec / 1000 );
 
-	ssize_t writeret = g_sys_write_func( fd,(const char*)buf + wrotelen,nbyte - wrotelen );
+	ssize_t writeret = g_sys_write_func( fd,(const char*)buf + wrotelen,nbyte - wrotelen ); // 这里不太合适先进行一次阻塞写吧？如果对端一直不接收数据，是否有可能阻塞所有协程？
 
 	if (writeret == 0)
 	{
