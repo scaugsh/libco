@@ -318,9 +318,9 @@ struct stCoEpoll_t
 
 	struct stTimeout_t *pTimeout; // 管理超时事件用的时间轮，ms级别
 
-	struct stTimeoutItemLink_t *pstTimeoutList;
+	struct stTimeoutItemLink_t *pstTimeoutList; // 存放超时事件
 
-	struct stTimeoutItemLink_t *pstActiveList;
+	struct stTimeoutItemLink_t *pstActiveList; // 可触发的事件，在epoll_loop里执行
 
 	co_epoll_res *result; 
 
@@ -360,6 +360,7 @@ struct stTimeout_t
 	unsigned long long ullStart;
 	long long llStartIdx;
 };
+//分配一个时间轮
 stTimeout_t *AllocTimeout( int iSize )
 {
 	stTimeout_t *lp = (stTimeout_t*)calloc( 1,sizeof(stTimeout_t) );	
@@ -413,7 +414,7 @@ int AddTimeout( stTimeout_t *apTimeout,stTimeoutItem_t *apItem ,unsigned long lo
 
 	return 0;
 }
-// 取出所有超时时间，并更新时间戳
+// 取出所有超时事件，并更新时间戳
 inline void TakeAllTimeout( stTimeout_t *apTimeout,unsigned long long allNow,stTimeoutItemLink_t *apResult )
 {
 	if( apTimeout->ullStart == 0 )
@@ -848,7 +849,7 @@ void co_eventloop( stCoEpoll_t *ctx,pfn_co_eventloop_t pfn,void *arg )
 		Join<stTimeoutItem_t,stTimeoutItemLink_t>( active,timeout );
 
 		lp = active->head;
-		while( lp )
+		while( lp ) // 开始处理所有active和超时事件
 		{
 
 			PopHead<stTimeoutItem_t,stTimeoutItemLink_t>( active );
